@@ -36,7 +36,8 @@ enum DataType:byte {
 enum RequestType:byte {
     ALLREDUCE = 0,
     ALLGATHER = 1,
-    BROADCAST = 2
+    BROADCAST = 2,
+    JOIN = 3
 }
 table Request {
     // The request rank is necessary to create a consistent ordering of results,
@@ -73,7 +74,8 @@ enum ResponseType:byte {
     ALLREDUCE = 0,
     ALLGATHER = 1,
     BROADCAST = 2,
-    ERROR = 3
+    JOIN = 3,
+    ERROR = 4
 }
 table Response {
     response_type:ResponseType;
@@ -81,6 +83,8 @@ table Response {
     // If tensor_names has more than one entry, this is a fused operation and the
     // rest of the fields are the same.
     tensor_names:[string];
+    
+    tensor_type:DataType;
 
     // Empty unless response_type is ERROR.
     error_message:string;

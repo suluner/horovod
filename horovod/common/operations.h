@@ -65,6 +65,9 @@ void horovod_init_comm(MPI_Comm comm);
 // C interface to shut down Horovod.
 void horovod_shutdown();
 
+//C interface to join Horovod.
+void horovod_join();
+
 // C interface to get index of current Horovod process.
 // Returns -1 if Horovod is not initialized.
 int horovod_rank();
@@ -105,6 +108,11 @@ Status EnqueueTensorBroadcast(std::shared_ptr<OpContext> context,
                               std::shared_ptr<ReadyEvent> ready_event,
                               const std::string name, const int device,
                               StatusCallback callback);
+
+Status EnqueueJoin(std::shared_ptr<OpContext> context,
+                   std::shared_ptr<ReadyEvent> ready_event,
+                   const std::string name, const int device,
+                   StatusCallback callback);
 
 } // namespace common
 } // namespace horovod

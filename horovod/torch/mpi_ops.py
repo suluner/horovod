@@ -41,6 +41,7 @@ from horovod.torch.compression import Compression
 # import basic methods
 init = _basics.init
 shutdown = _basics.shutdown
+join = _basics.join
 size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank

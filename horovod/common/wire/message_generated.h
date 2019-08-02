@@ -83,7 +83,7 @@ inline const char * const *EnumNamesDataType() {
 
 inline const char *EnumNameDataType(DataType e) {
   if (e < DataType_HOROVOD_UINT8 || e > DataType_HOROVOD_BOOL) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesDataType()[index];
 }
 
@@ -91,15 +91,17 @@ enum RequestType {
   RequestType_ALLREDUCE = 0,
   RequestType_ALLGATHER = 1,
   RequestType_BROADCAST = 2,
+  RequestType_JOIN = 3,
   RequestType_MIN = RequestType_ALLREDUCE,
-  RequestType_MAX = RequestType_BROADCAST
+  RequestType_MAX = RequestType_JOIN
 };
 
-inline const RequestType (&EnumValuesRequestType())[3] {
+inline const RequestType (&EnumValuesRequestType())[4] {
   static const RequestType values[] = {
     RequestType_ALLREDUCE,
     RequestType_ALLGATHER,
-    RequestType_BROADCAST
+    RequestType_BROADCAST,
+    RequestType_JOIN
   };
   return values;
 }
@@ -109,14 +111,15 @@ inline const char * const *EnumNamesRequestType() {
     "ALLREDUCE",
     "ALLGATHER",
     "BROADCAST",
+    "JOIN",
     nullptr
   };
   return names;
 }
 
 inline const char *EnumNameRequestType(RequestType e) {
-  if (e < RequestType_ALLREDUCE || e > RequestType_BROADCAST) return "";
-  const size_t index = static_cast<int>(e);
+  if (e < RequestType_ALLREDUCE || e > RequestType_JOIN) return "";
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesRequestType()[index];
 }
 
@@ -124,16 +127,18 @@ enum ResponseType {
   ResponseType_ALLREDUCE = 0,
   ResponseType_ALLGATHER = 1,
   ResponseType_BROADCAST = 2,
-  ResponseType_ERROR = 3,
+  ResponseType_JOIN = 3,
+  ResponseType_ERROR = 4,
   ResponseType_MIN = ResponseType_ALLREDUCE,
   ResponseType_MAX = ResponseType_ERROR
 };
 
-inline const ResponseType (&EnumValuesResponseType())[4] {
+inline const ResponseType (&EnumValuesResponseType())[5] {
   static const ResponseType values[] = {
     ResponseType_ALLREDUCE,
     ResponseType_ALLGATHER,
     ResponseType_BROADCAST,
+    ResponseType_JOIN,
     ResponseType_ERROR
   };
   return values;
@@ -144,6 +149,7 @@ inline const char * const *EnumNamesResponseType() {
     "ALLREDUCE",
     "ALLGATHER",
     "BROADCAST",
+    "JOIN",
     "ERROR",
     nullptr
   };
@@ -152,7 +158,7 @@ inline const char * const *EnumNamesResponseType() {
 
 inline const char *EnumNameResponseType(ResponseType e) {
   if (e < ResponseType_ALLREDUCE || e > ResponseType_ERROR) return "";
-  const size_t index = static_cast<int>(e);
+  const size_t index = static_cast<size_t>(e);
   return EnumNamesResponseType()[index];
 }
 
@@ -347,15 +353,19 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_RESPONSE_TYPE = 4,
     VT_TENSOR_NAMES = 6,
-    VT_ERROR_MESSAGE = 8,
-    VT_DEVICES = 10,
-    VT_TENSOR_SIZES = 12
+    VT_TENSOR_TYPE = 8,
+    VT_ERROR_MESSAGE = 10,
+    VT_DEVICES = 12,
+    VT_TENSOR_SIZES = 14
   };
   ResponseType response_type() const {
     return static_cast<ResponseType>(GetField<int8_t>(VT_RESPONSE_TYPE, 0));
   }
   const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *tensor_names() const {
     return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>> *>(VT_TENSOR_NAMES);
+  }
+  DataType tensor_type() const {
+    return static_cast<DataType>(GetField<int8_t>(VT_TENSOR_TYPE, 0));
   }
   const flatbuffers::String *error_message() const {
     return GetPointer<const flatbuffers::String *>(VT_ERROR_MESSAGE);
@@ -372,6 +382,7 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_TENSOR_NAMES) &&
            verifier.VerifyVector(tensor_names()) &&
            verifier.VerifyVectorOfStrings(tensor_names()) &&
+           VerifyField<int8_t>(verifier, VT_TENSOR_TYPE) &&
            VerifyOffset(verifier, VT_ERROR_MESSAGE) &&
            verifier.VerifyString(error_message()) &&
            VerifyOffset(verifier, VT_DEVICES) &&
@@ -390,6 +401,9 @@ struct ResponseBuilder {
   }
   void add_tensor_names(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> tensor_names) {
     fbb_.AddOffset(Response::VT_TENSOR_NAMES, tensor_names);
+  }
+  void add_tensor_type(DataType tensor_type) {
+    fbb_.AddElement<int8_t>(Response::VT_TENSOR_TYPE, static_cast<int8_t>(tensor_type), 0);
   }
   void add_error_message(flatbuffers::Offset<flatbuffers::String> error_message) {
     fbb_.AddOffset(Response::VT_ERROR_MESSAGE, error_message);
@@ -416,6 +430,7 @@ inline flatbuffers::Offset<Response> CreateResponse(
     flatbuffers::FlatBufferBuilder &_fbb,
     ResponseType response_type = ResponseType_ALLREDUCE,
     flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> tensor_names = 0,
+    DataType tensor_type = DataType_HOROVOD_UINT8,
     flatbuffers::Offset<flatbuffers::String> error_message = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> devices = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes = 0) {
@@ -424,6 +439,7 @@ inline flatbuffers::Offset<Response> CreateResponse(
   builder_.add_devices(devices);
   builder_.add_error_message(error_message);
   builder_.add_tensor_names(tensor_names);
+  builder_.add_tensor_type(tensor_type);
   builder_.add_response_type(response_type);
   return builder_.Finish();
 }
@@ -432,6 +448,7 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
     flatbuffers::FlatBufferBuilder &_fbb,
     ResponseType response_type = ResponseType_ALLREDUCE,
     const std::vector<flatbuffers::Offset<flatbuffers::String>> *tensor_names = nullptr,
+    DataType tensor_type = DataType_HOROVOD_UINT8,
     const char *error_message = nullptr,
     const std::vector<int32_t> *devices = nullptr,
     const std::vector<int64_t> *tensor_sizes = nullptr) {
@@ -443,6 +460,7 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
       _fbb,
       response_type,
       tensor_names__,
+      tensor_type,
       error_message__,
       devices__,
       tensor_sizes__);

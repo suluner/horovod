@@ -28,6 +28,7 @@ public:
                    std::vector<std::shared_ptr<AllreduceOp>> allreduce_ops,
                    std::vector<std::shared_ptr<AllgatherOp>> allgather_ops,
                    std::vector<std::shared_ptr<BroadcastOp>> broadcast_ops,
+                   std::shared_ptr<JoinOp> join_op,
                    std::shared_ptr<ErrorOp> error_op);
 
   virtual ~OperationManager() = default;
@@ -37,6 +38,8 @@ public:
   Status ExecuteAllgather(std::vector<TensorTableEntry>& entries, const Response& response) const;
 
   Status ExecuteBroadcast(std::vector<TensorTableEntry>& entries, const Response& response) const;
+  
+  Status ExecuteJoin(std::vector<TensorTableEntry>& entries, const Response& response) const;
 
   Status ExecuteError(std::vector<TensorTableEntry>& entries, const Response& response) const;
 
@@ -48,6 +51,7 @@ private:
   std::vector<std::shared_ptr<AllreduceOp>> allreduce_ops_;
   std::vector<std::shared_ptr<AllgatherOp>> allgather_ops_;
   std::vector<std::shared_ptr<BroadcastOp>> broadcast_ops_;
+  std::shared_ptr<JoinOp> join_op_;
   std::shared_ptr<ErrorOp> error_op_;
 };
 

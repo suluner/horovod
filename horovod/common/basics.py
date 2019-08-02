@@ -57,6 +57,10 @@ class HorovodBasics(object):
     def shutdown(self):
         """A function that shuts Horovod down."""
         return self.MPI_LIB_CTYPES.horovod_shutdown()
+    
+    def join(self):
+        """A function that join Horovod."""
+        return self.MPI_LIB_CTYPES.horovod_join()
 
     def size(self):
         """A function that returns the number of Horovod processes.

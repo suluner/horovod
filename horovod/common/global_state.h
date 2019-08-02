@@ -19,6 +19,7 @@
 
 #include <queue>
 #include <thread>
+#include <condition_variable>
 
 #include "fusion_buffer_manager.h"
 #include "parameter_manager.h"
@@ -145,6 +146,15 @@ struct HorovodGlobalState {
 
   // A string indicating what framework we are using to perform CPU operations.
   std::string cpu_operation;
+  
+  // Number of joined process
+  uint32_t joined_size = 0;
+
+  bool joined = false;
+
+  std::condition_variable cond_var;
+
+  bool all_joined = false;
 
   ~HorovodGlobalState() {
     // Make sure that the destructor of the background thread is safe to

@@ -45,7 +45,7 @@ const std::string& DataType_Name(DataType value);
 class Request {
 public:
   enum RequestType {
-    ALLREDUCE = 0, ALLGATHER = 1, BROADCAST = 2
+    ALLREDUCE = 0, ALLGATHER = 1, BROADCAST = 2, JOIN = 3
   };
 
   static const std::string& RequestType_Name(RequestType value);
@@ -130,7 +130,7 @@ private:
 class Response {
 public:
   enum ResponseType {
-    ALLREDUCE = 0, ALLGATHER = 1, BROADCAST = 2, ERROR = 3
+    ALLREDUCE = 0, ALLGATHER = 1, BROADCAST = 2, JOIN = 3, ERROR = 4
   };
 
   static const std::string& ResponseType_Name(ResponseType value);
@@ -147,6 +147,10 @@ public:
   void set_tensor_names(const std::vector<std::string>& value);
 
   void add_tensor_name(const std::string& value);
+
+  DataType tensor_type() const;
+
+  void set_tensor_type(DataType value);
 
   // Empty unless response_type is ERROR.
   const std::string& error_message() const;
@@ -179,6 +183,7 @@ public:
 private:
   ResponseType response_type_ = ResponseType::ALLREDUCE;
   std::vector<std::string> tensor_names_;
+  DataType tensor_type_ = DataType::HOROVOD_UINT8;
   std::string error_message_;
   std::vector<int32_t> devices_;
   std::vector<int64_t> tensor_sizes_;
