@@ -21,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <cuda_runtime.h>
 
 #include "message.h"
 
@@ -153,6 +154,22 @@ public:
   virtual const void* data() const = 0;
   virtual int64_t size() const = 0;
   virtual ~Tensor() = default;
+};
+
+template <DataType DT, class T>
+class DummyTensor : public Tensor {
+public:
+  DummyTensor(int device, int64_t num_elements);
+  ~DummyTensor();
+  virtual const DataType dtype() const override;
+  virtual const TensorShape shape() const override;
+  virtual const void* data() const override;
+  virtual int64_t size() const override;
+
+private:
+  int64_t num_elements_;
+  int device_;
+  T* buffer_data_;
 };
 
 class OpContext {

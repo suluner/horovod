@@ -360,7 +360,7 @@ void Response_SerializeToWire(const Response& response,
   response_builder.add_response_type(
       (wire::ResponseType) response.response_type());
   response_builder.add_tensor_names(tensor_names_wire);
-  response_builder.add_tensor_type((wire::DataType)response.tensor_type())
+  response_builder.add_tensor_type((wire::DataType)response.tensor_type());
   response_builder.add_error_message(error_message_wire);
   response_builder.add_devices(devices_wire);
   response_builder.add_tensor_sizes(tensor_sizes_wire);

@@ -147,10 +147,14 @@ struct HorovodGlobalState {
   // A string indicating what framework we are using to perform CPU operations.
   std::string cpu_operation;
   
-  // Number of joined process
-  uint32_t joined_size = 0;
-
+  // Whether process is joined
   bool joined = false;
+
+  //Device on which perform operations
+  int device = -1;
+
+  //<join_rank, device_id> map
+  std::unordered_map<int32_t, int32_t> join_device_map;
 
   std::condition_variable cond_var;
 

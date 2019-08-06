@@ -196,9 +196,9 @@ BroadcastOp::BroadcastOp(HorovodGlobalState* global_state)
 JoinOp::JoinOp(HorovodGlobalState* global_state) : HorovodOp(global_state) {}
 
 Status JoinOp::Execute(std::vector<TensorTableEntry>& entries, const Response& response) {
-  std::lock_guard<mutex> guard(horovod_global.mutex);
-  horovod_global.all_joined = true;
-  horovod_global.cond_var.notify_all();
+  std::lock_guard<std::mutex> guard(global_state_->mutex);
+  global_state_->all_joined = true;
+  global_state_->cond_var.notify_all();
   return Status::OK();
 }
 
