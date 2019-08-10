@@ -172,6 +172,61 @@ private:
   T* buffer_data_;
 };
 
+template <DataType DT, class T>
+DummyTensor<DT, T>::DummyTensor(int device, int64_t num_elements) {
+  num_elements_ = num_elements;
+  device_ = device;
+  if (device_ == CPU_DEVICE_ID) {
+    buffer_data_ = new T[num_elements_];
+    memset(buffer_data_, 0, sizeof(T)*num_elements_);
+  } else {
+    #if HAVE_CUDA
+      cudaSetDevice(device_);
+      cudaMalloc(&buffer_data_, sizeof(T)*num_elements_);
+      cudaMemset(buffer_data_, 0, sizeof(T)*num_elements_);
+    #else
+      throw std::logic_error("Internal error. Requested Join "
+                             "with GPU device but not compiled with CUDA.");
+    #endif
+  }
+}
+
+template <DataType DT, class T>
+DummyTensor<DT, T>::~DummyTensor() {
+  if (device_ == CPU_DEVICE_ID) {
+    delete[] buffer_data_;
+  } else {
+    #if HAVE_CUDA
+      cudaFree(buffer_data_);
+    #else
+      throw std::logic_error("Internal error. Requested Join "
+                             "with GPU device but not compiled with CUDA.");
+    #endif
+  }
+}
+
+template <DataType DT, class T>
+const DataType DummyTensor<DT, T>::dtype() const {
+  return DT;
+}
+
+template <DataType DT, class T>
+const TensorShape DummyTensor<DT, T>::shape() const {
+  TensorShape shape;
+  shape.AddDim(num_elements_);
+  return shape;
+}
+
+template <DataType DT, class T>
+const void* DummyTensor<DT, T>::data() const {
+  return (void*) buffer_data_;
+}
+
+template <DataType DT, class T>
+int64_t DummyTensor<DT, T>::size() const {
+  return num_elements_*sizeof(T);
+}
+
 class OpContext {
 public:
   // These allocators are fully synchronous, unlike TensorFlow counterparts.

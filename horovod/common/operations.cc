@@ -537,7 +537,7 @@ ResponseList FuseResponses(std::deque<Response>& responses,
       assert(response.tensor_names().size() == 1);
       responses.pop_front();
       int64_t tensor_size = 0;
-      if (response.response_type() == Response::ResponseType::ALLREDUCE) {
+      if (response.response_type() == Response::ResponseType::ALLREDUCE && state.joined == false) {
         // Attempt to add more responses to this fused response.
         auto& entry = state.tensor_table[response.tensor_names()[0]];
         tensor_size = entry.tensor->size();
@@ -585,7 +585,7 @@ ResponseList FuseResponses(std::deque<Response>& responses,
         }
 
       } else if (response.response_type() ==
-                 Response::ResponseType::ALLGATHER) {
+                 Response::ResponseType::ALLGATHER && state.joined == false) {
         // Attempt to add more responses to this fused response.
         auto& entry = state.tensor_table[response.tensor_names()[0]];
 
@@ -677,11 +677,12 @@ std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, int64_t tenso
 // raising an error.
 void PerformOperation(TensorTable& tensor_table, Response response, HorovodGlobalState& state) {
   std::vector<TensorTableEntry> entries;
-
+  LOG(TRACE) << "Line 680";
   // Process JOIN Response
   if (response.response_type() == Response::JOIN) {
     Status status;
     try {
+      LOG(TRACE) << "Operate Join";
       status = op_manager->ExecuteOperation(entries, response);
     } catch (const std::exception& ex) {
       status = Status::UnknownError(ex.what());
@@ -721,7 +722,9 @@ void PerformOperation(TensorTable& tensor_table, Response response, HorovodGloba
         entry.tensor = dummy_tensor;
         entry.output = dummy_tensor;
         entry.device = state.device;
+        // entry.callback = [](const common::Status& status) {return;};
         entries.push_back(std::move(entry));
+        LOG(TRACE) << "Construct dummy tensor";
       }
     }
   }
@@ -745,7 +748,9 @@ void PerformOperation(TensorTable& tensor_table, Response response, HorovodGloba
     if (!status.ok()) {
       for (auto& e : entries) {
         timeline.End(e.tensor_name, nullptr);
-        e.callback(status);
+        if (e.callback != nullptr) {
+          e.callback(status);
+        }
       }
       return;
     }
@@ -776,7 +781,7 @@ void PerformOperation(TensorTable& tensor_table, Response response, HorovodGloba
       timeline.ActivityEnd(e.tensor_name);
     }
   }
-
+  LOG(TRACE) << "LINE 782";
   Status status;
   try {
     status = op_manager->ExecuteOperation(entries, response);
@@ -1302,7 +1307,9 @@ void BackgroundThreadLoop(HorovodGlobalState& state, MPIContext& ctx) {
   {
     std::lock_guard<std::mutex> guard(state.mutex);
     for (auto& e : state.tensor_table) {
-      callbacks.emplace_back(e.second.callback);
+      if (e.second.callback != nullptr) {
+        callbacks.emplace_back(e.second.callback);
+      }
     }
     state.tensor_table.clear();
     while (!state.message_queue.empty()) {
@@ -1419,38 +1426,38 @@ void RunBypass(std::queue<Request>& message_queue,
 std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, int64_t tensor_size, int device) {
   std::shared_ptr<Tensor> tensor_ptr = nullptr;
   switch (tensor_type) {
-    case HOROVOD_UINT8:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_UINT8, uint8_t>>(device, tensor_size);
+    case DataType::HOROVOD_UINT8:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_UINT8, uint8_t>>(device, tensor_size);
       break;
-    case HOROVOD_INT8:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_INT8, int8_t>>(device, tensor_size);
+    case DataType::HOROVOD_INT8:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT8, int8_t>>(device, tensor_size);
       break;
-    case HOROVOD_UINT16:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_UINT16, uint16_t>>(device, tensor_size);
+    case DataType::HOROVOD_UINT16:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_UINT16, uint16_t>>(device, tensor_size);
       break;
-    case HOROVOD_INT16:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_INT16, int16_t>>(device, tensor_size);
+    case DataType::HOROVOD_INT16:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT16, int16_t>>(device, tensor_size);
       break;
-    case HOROVOD_INT32:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_INT32, int32_t>>(device, tensor_size);
+    case DataType::HOROVOD_INT32:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT32, int32_t>>(device, tensor_size);
       break;
-    case HOROVOD_INT64:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_INT64, int64_t>>(device, tensor_size);
+    case DataType::HOROVOD_INT64:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT64, int64_t>>(device, tensor_size);
       break;
-    case HOROVOD_FLOAT16:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_FLOAT16, float>>(device, tensor_size);
+    case DataType::HOROVOD_FLOAT16:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT16, float>>(device, tensor_size);
       break;
-    case HOROVOD_FLOAT32:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_FLOAT32, float>>(device, tensor_size);
+    case DataType::HOROVOD_FLOAT32:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT32, float>>(device, tensor_size);
       break;
-    case HOROVOD_FLOAT64:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_FLOAT64, double>>(device, tensor_size);
+    case DataType::HOROVOD_FLOAT64:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT64, double>>(device, tensor_size);
       break;
-    case HOROVOD_BOOL:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_BOOL, bool>>(device, tensor_size);
+    case DataType::HOROVOD_BOOL:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_BOOL, bool>>(device, tensor_size);
       break;
-    case HOROVOD_BYTE:
-      tensor_ptr = std::make_shared<DummyTensor<HOROVOD_BYTE, char>>(device, tensor_size);
+    case DataType::HOROVOD_BYTE:
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_BYTE, char>>(device, tensor_size);
       break;
     default:
       throw std::logic_error("Unsupported tensor data type.");
@@ -1527,7 +1534,6 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       
       if (message.request_type() == Request::JOIN) {
           state.joined = true;
-          continue;
       }
 
       // Keep track of cache hits
@@ -1630,6 +1636,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
     if (!cache_coordinator.cache_hits().empty()) {
       RunBypass(message_queue, cache_coordinator, state, ctx);
     }
+    LOG(TRACE) << "Bypass, return";
     return !cache_coordinator.should_shut_down();
   }
 
@@ -1643,6 +1650,9 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       // Pop the first available message message
       Request message = message_queue.front();
       message_queue.pop();
+      if (message.request_type() == Request::JOIN) {
+        state.join_device_map.insert(std::make_pair(message.request_rank(), message.device()));
+      }
       int joined_size = state.join_device_map.size();
       bool reduce =
           IncrementTensorCount(state.message_table, message, state.size, joined_size);
@@ -1686,12 +1696,15 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       for (auto& received_message : received_message_list.requests()) {
         auto& received_name = received_message.tensor_name();
         
+        LOG(TRACE) << "Receiving request message as " << received_name;
+       
         if (received_message.request_type() == Request::JOIN) {
           state.join_device_map.insert(std::make_pair(received_message.request_rank(), received_message.device()));
         }
         int joined_size = state.join_device_map.size();
         bool reduce = IncrementTensorCount(state.message_table,
                                            received_message, state.size, joined_size);
+
         if (reduce) {
           ready_to_reduce.push_back(received_name);
         }
@@ -1699,6 +1712,22 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       if (received_message_list.shutdown()) {
         // Received SHUTDOWN request from one of the workers.
         should_shut_down = true;
+      }
+
+      // Check if there are tensors ready to reduce after Join.
+      int joined_size = state.join_device_map.size();
+      if (joined_size > 0) {
+        for (auto& table_iter : *state.message_table) {
+          std::vector<Request>& messages = std::get<0>(table_iter.second);
+          int count = (int)messages.size();
+          if (messages[0].request_type() != Request::JOIN) {
+            if (count == (state.size - joined_size) &&
+              std::find(ready_to_reduce.begin(), ready_to_reduce.end(), table_iter.first) == ready_to_reduce.end()) {
+              state.timeline.NegotiateEnd(table_iter.first);
+              ready_to_reduce.push_back(table_iter.first);
+            }
+          }
+        }
       }
     }
 
@@ -1786,15 +1815,23 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
     std::lock_guard<std::mutex> guard(horovod_global.mutex);
     // All workers add supported responses to cache. This updates the cache
     // order consistently across workers.
-    for (auto& response : response_list.responses()) {
-      if (response.response_type() == Response::ResponseType::ALLREDUCE &&
-          (int)response.devices().size() == state.size) {
-        state.response_cache.put(response, state.tensor_table);
-      }
-    }
 
-    // Reassign cache bits based on current cache order.
-    state.response_cache.update_cache_bits();
+    // No process is joined
+    // if (response_list.responses().size() >= 1 && response_list.responses()[0].tensor_sizes().size() == 0) {
+      for (auto& response : response_list.responses()) {
+        if (response.response_type() == Response::ResponseType::ALLREDUCE &&
+          (int)response.devices().size() == state.size) {
+          state.response_cache.put(response, state.tensor_table);
+        }
+    
+        // Reassign cache bits based on current cache order.
+        state.response_cache.update_cache_bits();
+      }
+    // } else {
+      // Turn off the response cache
+    //  LOG(TRACE) << "Turn off response cache";
+    //  state.response_cache.set_capacity(0);
+    // }
   }
 
   // Perform the collective operation. All nodes should end up performing
@@ -1815,7 +1852,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
   if (response_list.shutdown()) {
     should_shut_down = true;
   }
-
+  LOG(TRACE) << "End of loop";
   return !should_shut_down;
 }
 
@@ -2056,6 +2093,7 @@ Status EnqueueJoin(std::shared_ptr<OpContext> context,
   message.set_request_rank(horovod_global.rank);
   message.set_device(device);
   message.set_request_type(Request::JOIN);
+  message.set_tensor_name("join.noname");
 
   TensorTableEntry e;
   e.context = context;
