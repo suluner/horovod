@@ -169,9 +169,7 @@ Status CUDAAllreduce::FinalizeCUDAQueue(const std::vector<TensorTableEntry>& ent
 
     for (auto& e : entries) {
       timeline.End(e.tensor_name, e.output);
-      if (e.callback != nullptr) {
-        e.callback(Status::OK());
-      }
+      e.callback(Status::OK());
     }
   });
 
