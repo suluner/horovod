@@ -255,7 +255,7 @@ bool IncrementTensorCount(std::unique_ptr<MessageTable>& message_table,
 //
 // Constructing the Response, thus, requires a whole lot of error checking.
 Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
-                           std::string name, int mpi_size,
+                           std::string name,
                            std::unordered_map<int32_t, int32_t>& join_device_map) {
   bool error = false;
   auto it = message_table->find(name);
@@ -429,11 +429,13 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
       break;
     }
   }
+  int joined_size = join_device_map.size();
+  int mpi_size = requests.size() + joined_size;
   std::vector<int32_t> devices(mpi_size);
   for (auto& request : requests) {
     devices[request.request_rank()] = request.device();
   }
-  if (requests.size() < mpi_size) {
+  if (joined_size > 0) {
     for (auto iter=join_device_map.begin(); iter!= join_device_map.end(); ++iter) {
       devices[iter->first] = iter->second;
     }
@@ -452,7 +454,6 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
     }
   } else if (message_type == Request::ALLREDUCE) {
     response.set_response_type(Response::ALLREDUCE);
-    int joined_size = join_device_map.size();
     if (joined_size > 0) {
       TensorShape tensor_shape;
       for (auto dim : requests[0].tensor_shape()) {
@@ -678,7 +679,7 @@ std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, int64_t tenso
 
 // Process a Response by doing a reduction, a gather, a broadcast, or
 // raising an error.
-void PerformOperation(TensorTable& tensor_table, Response response, HorovodGlobalState& state) {
+void PerformOperation(TensorTable& tensor_table, Response response) {
   std::vector<TensorTableEntry> entries;
   // Process JOIN Response
   if (response.response_type() == Response::JOIN) {
@@ -703,7 +704,8 @@ void PerformOperation(TensorTable& tensor_table, Response response, HorovodGloba
     // Lock on the tensor table.
     std::lock_guard<std::mutex> guard(horovod_global.mutex);
     // Record the device id
-    state.device = response.devices()[state.rank];
+    int device = response.devices()[horovod_global.rank];
+    horovod_global.device = device;
 
     for (auto& name : response.tensor_names()) {
       if (!horovod_global.joined) {
@@ -719,10 +721,10 @@ void PerformOperation(TensorTable& tensor_table, Response response, HorovodGloba
         entry.tensor_name = name;
         std::shared_ptr<Tensor> dummy_tensor = ConstructDummyTensor(response.tensor_type(),
                                                                     response.tensor_sizes()[0],
-                                                                    state.device);
+                                                                    device);
         entry.tensor = dummy_tensor;
         entry.output = dummy_tensor;
-        entry.device = state.device;
+        entry.device = device;
         entry.callback = [](const common::Status& status) {return;};
         entries.push_back(std::move(entry));
         LOG(TRACE) << "Construct dummy tensor done.";
@@ -749,9 +751,7 @@ void PerformOperation(TensorTable& tensor_table, Response response, HorovodGloba
     if (!status.ok()) {
       for (auto& e : entries) {
         timeline.End(e.tensor_name, nullptr);
-        if (e.callback != nullptr) {
-          e.callback(status);
-        }
+        e.callback(status);
       }
       return;
     }
@@ -1408,7 +1408,7 @@ void RunBypass(std::queue<Request>& message_queue,
     LOG(TRACE, state.rank) << "Performing " << response.tensor_names_string();
     LOG(DEBUG, state.rank) << "Processing " << response.tensor_names().size()
                            << " tensors";
-    PerformOperation(state.tensor_table, response, state);
+    PerformOperation(state.tensor_table, response);
     LOG(TRACE, state.rank) << "Finished performing "
                            << response.tensor_names_string();
   }
@@ -1647,6 +1647,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       // Pop the first available message message
       Request message = message_queue.front();
       message_queue.pop();
+
       if (message.request_type() == Request::JOIN) {
         state.join_device_map.insert(std::make_pair(message.request_rank(), message.device()));
         state.any_joined = true;
@@ -1693,17 +1694,16 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       RequestList::ParseFromBytes(received_message_list, rank_buffer_ptr);
       for (auto& received_message : received_message_list.requests()) {
         auto& received_name = received_message.tensor_name();
-        
-        LOG(TRACE) << "Receiving request message as " << received_name;
        
         if (received_message.request_type() == Request::JOIN) {
-          state.join_device_map.insert(std::make_pair(received_message.request_rank(), received_message.device()));
+          state.join_device_map.insert(std::make_pair(received_message.request_rank(),
+                                                      received_message.device()));
           state.any_joined = true;
         }
+
         int joined_size = state.join_device_map.size();
         bool reduce = IncrementTensorCount(state.message_table,
                                            received_message, state.size, joined_size);
-
         if (reduce) {
           ready_to_reduce.push_back(received_name);
         }
@@ -1721,7 +1721,8 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
             int count = (int)messages.size();
             int joined_size = state.join_device_map.size();
             if (count == (state.size - joined_size) &&
-              std::find(ready_to_reduce.begin(), ready_to_reduce.end(), table_iter.first) == ready_to_reduce.end()) {
+              std::find(ready_to_reduce.begin(), ready_to_reduce.end(),
+                        table_iter.first) == ready_to_reduce.end()) {
               state.timeline.NegotiateEnd(table_iter.first);
               ready_to_reduce.push_back(table_iter.first);
             }
@@ -1754,7 +1755,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
     }
 
     for (auto& tensor_name : ready_to_reduce) {
-      Response response = ConstructResponse(state.message_table, tensor_name, state.size, state.join_device_map);
+      Response response = ConstructResponse(state.message_table, tensor_name, state.join_device_map);
       responses.push_back(std::move(response));
     }
 
@@ -1826,7 +1827,10 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
         // Reassign cache bits based on current cache order.
         state.response_cache.update_cache_bits();
       } else {
-        LOG(TRACE) << "Turn off response cache.";
+        // With response cache, once there is some process joined, the processes that
+        // are not joined will go to RunBypass and do not send request to master.
+        // But the joined process can not go to RunBypass and just return
+        LOG(TRACE) << "Turn off the response cache.";
         state.response_cache.set_capacity(0);
       }
     }
@@ -1838,7 +1842,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
     LOG(TRACE, state.rank) << "Performing " << response.tensor_names_string();
     LOG(DEBUG, state.rank) << "Processing " << response.tensor_names().size()
                            << " tensors";
-    PerformOperation(state.tensor_table, response, state);
+    PerformOperation(state.tensor_table, response);
     LOG(TRACE, state.rank) << "Finished performing "
                            << response.tensor_names_string();
   }
