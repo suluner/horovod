@@ -26,7 +26,7 @@ check_extension('horovod.tensorflow', 'HOROVOD_WITH_TENSORFLOW', __file__, 'mpi_
 
 from horovod.tensorflow.compression import Compression
 from horovod.tensorflow.mpi_ops import allgather, broadcast, _allreduce
-from horovod.tensorflow.mpi_ops import init, shutdown, join
+from horovod.tensorflow.mpi_ops import init, shutdown, join, joined_size
 from horovod.tensorflow.mpi_ops import size, local_size, rank, local_rank
 from horovod.tensorflow.mpi_ops import mpi_threads_supported
 from horovod.tensorflow.util import _executing_eagerly, _make_subgraph, _cache
@@ -62,7 +62,7 @@ def allreduce(tensor, average=True, device_dense='', device_sparse='',
     if isinstance(tensor, tf.IndexedSlices):
         with tf.device(device_sparse):
             # For IndexedSlices, do two allgathers instead of an allreduce.
-            horovod_size = tf.cast(size(), tensor.values.dtype)
+            horovod_size = tf.cast(size()-joined_size(), tensor.values.dtype)
             values = allgather(tensor.values)
             indices = allgather(tensor.indices)
 
@@ -73,7 +73,7 @@ def allreduce(tensor, average=True, device_dense='', device_sparse='',
                                 dense_shape=tensor.dense_shape)
     else:
         with tf.device(device_dense):
-            horovod_size = tf.cast(size(), dtype=tensor.dtype)
+            horovod_size = tf.cast(size()-joined_size(), dtype=tensor.dtype)
             tensor_compressed, ctx = compression.compress(tensor)
             summed_tensor_compressed = _allreduce(tensor_compressed)
             summed_tensor = compression.decompress(summed_tensor_compressed, ctx)

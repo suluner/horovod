@@ -225,7 +225,7 @@ extern "C" int horovod_mxnet_allreduce_async(NDArray* input, NDArray* output,
 #endif
 
   if (average) {
-    *output /= horovod_size();
+    *output /= (horovod_size() - horovod_joined_size());
   }
 
   MX_API_END();

@@ -58,7 +58,7 @@ int DoAllreduce(T* tensor, T* output, int average, char* name) {
       GetOpName("allreduce", name, handle), device,
       [handle, average, output](const Status& status) {
         if (average) {
-          TensorUtil::DivideTensorInPlace<DT, Dev, T>(output, horovod_size());
+          TensorUtil::DivideTensorInPlace<DT, Dev, T>(output, (horovod_size()-horovod_joined_size()));
         }
         handle_manager.MarkDone(handle, status);
       });
@@ -91,7 +91,7 @@ int DoAllreduceCudaOnCPU(TC* tensor, TC* output, int average, char* name) {
         TensorUtil::CopyCPUToCuda<DT>(hvd_cpu_buffer->tensor(), output);
         if (average) {
           TensorUtil::DivideTensorInPlace<DT, DeviceType::GPU>(output,
-                                                               horovod_size());
+                                                               (horovod_size()-horovod_joined_size()));
         }
         handle_manager.MarkDone(handle, status);
       });

@@ -158,7 +158,11 @@ struct HorovodGlobalState {
 
   std::condition_variable cond_var;
 
+  //Whether all process are joined.
   bool all_joined = false;
+
+  //Whether any process is joined.
+  bool any_joined = false;
 
   ~HorovodGlobalState() {
     // Make sure that the destructor of the background thread is safe to

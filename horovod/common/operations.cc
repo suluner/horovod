@@ -460,7 +460,10 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
       }
       int tensor_size = tensor_shape.num_elements();
       response.add_tensor_size(tensor_size);
+
       response.set_tensor_type(data_type);
+
+      response.set_any_joined(true);
     }
   } else if (message_type == Request::BROADCAST) {
     response.set_response_type(Response::BROADCAST);
@@ -537,8 +540,7 @@ ResponseList FuseResponses(std::deque<Response>& responses,
       assert(response.tensor_names().size() == 1);
       responses.pop_front();
       int64_t tensor_size = 0;
-      int joined_size = state.join_device_map.size();
-      if (response.response_type() == Response::ResponseType::ALLREDUCE && joined_size == 0) {
+      if (response.response_type() == Response::ResponseType::ALLREDUCE && state.any_joined == false) {
         // Attempt to add more responses to this fused response.
         auto& entry = state.tensor_table[response.tensor_names()[0]];
         tensor_size = entry.tensor->size();
@@ -586,7 +588,7 @@ ResponseList FuseResponses(std::deque<Response>& responses,
         }
 
       } else if (response.response_type() ==
-                 Response::ResponseType::ALLGATHER && joined_size == 0) {
+                 Response::ResponseType::ALLGATHER && state.any_joined == false) {
         // Attempt to add more responses to this fused response.
         auto& entry = state.tensor_table[response.tensor_names()[0]];
 
@@ -1647,6 +1649,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       message_queue.pop();
       if (message.request_type() == Request::JOIN) {
         state.join_device_map.insert(std::make_pair(message.request_rank(), message.device()));
+        state.any_joined = true;
       }
       int joined_size = state.join_device_map.size();
       bool reduce =
@@ -1695,6 +1698,7 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
        
         if (received_message.request_type() == Request::JOIN) {
           state.join_device_map.insert(std::make_pair(received_message.request_rank(), received_message.device()));
+          state.any_joined = true;
         }
         int joined_size = state.join_device_map.size();
         bool reduce = IncrementTensorCount(state.message_table,
@@ -1710,12 +1714,12 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
       }
 
       // Check if there are tensors ready to reduce after Join.
-      int joined_size = state.join_device_map.size();
-      if (joined_size > 0) {
+      if (state.any_joined) {
         for (auto& table_iter : *state.message_table) {
           std::vector<Request>& messages = std::get<0>(table_iter.second);
-          int count = (int)messages.size();
           if (messages[0].request_type() != Request::JOIN) {
+            int count = (int)messages.size();
+            int joined_size = state.join_device_map.size();
             if (count == (state.size - joined_size) &&
               std::find(ready_to_reduce.begin(), ready_to_reduce.end(), table_iter.first) == ready_to_reduce.end()) {
               state.timeline.NegotiateEnd(table_iter.first);
@@ -1811,9 +1815,9 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
     // All workers add supported responses to cache. This updates the cache
     // order consistently across workers.
 
-    // No process is joined
-    if (response_list.responses().size() >= 1 && response_list.responses()[0].tensor_sizes().size() == 0) {
-      for (auto& response : response_list.responses()) {
+    for (auto& response : response_list.responses()) {
+      // No process is joined
+      if (response.any_joined() == false) {
         if (response.response_type() == Response::ResponseType::ALLREDUCE &&
           (int)response.devices().size() == state.size) {
           state.response_cache.put(response, state.tensor_table);
@@ -1821,10 +1825,10 @@ bool RunLoopOnce(HorovodGlobalState& state, MPIContext& ctx,
     
         // Reassign cache bits based on current cache order.
         state.response_cache.update_cache_bits();
+      } else {
+        LOG(TRACE) << "Turn off response cache.";
+        state.response_cache.set_capacity(0);
       }
-    } else {
-      LOG(TRACE) << "Turn off response cache.";
-      state.response_cache.set_capacity(0);
     }
   }
 
@@ -1915,6 +1919,11 @@ void horovod_join() {
     std::unique_lock<std::mutex> lock(horovod_global.mutex);
     horovod_global.cond_var.wait(lock, []{ return horovod_global.all_joined; });
   }
+}
+
+int horovod_joined_size() {
+  int joined_size = horovod_global.join_device_map.size();
+  return joined_size;
 }
 
 int horovod_rank() {

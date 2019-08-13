@@ -62,6 +62,11 @@ class HorovodBasics(object):
         """A function that join Horovod."""
         return self.MPI_LIB_CTYPES.horovod_join()
 
+    def joined_size(self):
+        """A function that get the joined process size."""
+        size = self.MPI_LIB_CTYPES.horovod_joined_size()
+        return size
+
     def size(self):
         """A function that returns the number of Horovod processes.
 

@@ -52,6 +52,7 @@ _basics = _HorovodBasics(__file__, 'mpi_lib')
 init = _basics.init
 shutdown = _basics.shutdown
 join = _basics.join
+joined_size = _basics.joined_size
 size = _basics.size
 local_size = _basics.local_size
 rank = _basics.rank

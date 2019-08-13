@@ -68,6 +68,9 @@ void horovod_shutdown();
 //C interface to join Horovod.
 void horovod_join();
 
+//C interface to get joined process size.
+int horovod_joined_size();
+
 // C interface to get index of current Horovod process.
 // Returns -1 if Horovod is not initialized.
 int horovod_rank();

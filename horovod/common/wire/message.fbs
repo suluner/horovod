@@ -96,6 +96,7 @@ table Response {
     // These tensor sizes are the dimension zero sizes of all the input matrices,
     // indexed by the rank.
     tensor_sizes:[long];
+    any_joined:bool;
 }
 table ResponseList {
     responses:[Response];

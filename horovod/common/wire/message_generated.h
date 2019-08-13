@@ -356,7 +356,8 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_TENSOR_TYPE = 8,
     VT_ERROR_MESSAGE = 10,
     VT_DEVICES = 12,
-    VT_TENSOR_SIZES = 14
+    VT_TENSOR_SIZES = 14,
+    VT_ANY_JOINED = 16
   };
   ResponseType response_type() const {
     return static_cast<ResponseType>(GetField<int8_t>(VT_RESPONSE_TYPE, 0));
@@ -376,6 +377,9 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int64_t> *tensor_sizes() const {
     return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_TENSOR_SIZES);
   }
+  bool any_joined() const {
+    return GetField<uint8_t>(VT_ANY_JOINED, 0) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_RESPONSE_TYPE) &&
@@ -389,6 +393,7 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVector(devices()) &&
            VerifyOffset(verifier, VT_TENSOR_SIZES) &&
            verifier.VerifyVector(tensor_sizes()) &&
+           VerifyField<uint8_t>(verifier, VT_ANY_JOINED) &&
            verifier.EndTable();
   }
 };
@@ -414,6 +419,9 @@ struct ResponseBuilder {
   void add_tensor_sizes(flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes) {
     fbb_.AddOffset(Response::VT_TENSOR_SIZES, tensor_sizes);
   }
+  void add_any_joined(bool any_joined) {
+    fbb_.AddElement<uint8_t>(Response::VT_ANY_JOINED, static_cast<uint8_t>(any_joined), 0);
+  }
   explicit ResponseBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -433,12 +441,14 @@ inline flatbuffers::Offset<Response> CreateResponse(
     DataType tensor_type = DataType_HOROVOD_UINT8,
     flatbuffers::Offset<flatbuffers::String> error_message = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> devices = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes = 0) {
+    flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes = 0,
+    bool any_joined = false) {
   ResponseBuilder builder_(_fbb);
   builder_.add_tensor_sizes(tensor_sizes);
   builder_.add_devices(devices);
   builder_.add_error_message(error_message);
   builder_.add_tensor_names(tensor_names);
+  builder_.add_any_joined(any_joined);
   builder_.add_tensor_type(tensor_type);
   builder_.add_response_type(response_type);
   return builder_.Finish();
@@ -451,7 +461,8 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
     DataType tensor_type = DataType_HOROVOD_UINT8,
     const char *error_message = nullptr,
     const std::vector<int32_t> *devices = nullptr,
-    const std::vector<int64_t> *tensor_sizes = nullptr) {
+    const std::vector<int64_t> *tensor_sizes = nullptr,
+    bool any_joined = false) {
   auto tensor_names__ = tensor_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*tensor_names) : 0;
   auto error_message__ = error_message ? _fbb.CreateString(error_message) : 0;
   auto devices__ = devices ? _fbb.CreateVector<int32_t>(*devices) : 0;
@@ -463,7 +474,8 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
       tensor_type,
       error_message__,
       devices__,
-      tensor_sizes__);
+      tensor_sizes__,
+      any_joined);
 }
 
 struct ResponseList FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {

@@ -172,6 +172,10 @@ public:
 
   void add_tensor_size(int64_t value);
 
+  void set_any_joined(bool value);
+
+  bool any_joined() const;
+
   // To fuse multiple allgather responses
   void add_allgather_response(const Response& response);
 
@@ -187,6 +191,7 @@ private:
   std::string error_message_;
   std::vector<int32_t> devices_;
   std::vector<int64_t> tensor_sizes_;
+  bool any_joined_ = false;
 };
 
 class ResponseList {
