@@ -48,10 +48,10 @@ class HorovodBasics(object):
                 self.MPI_LIB_CTYPES.horovod_init_comm.argtypes = [MPI_Comm]
 
             comm_obj = MPI_Comm.from_address(MPI._addressof(comm))
-            return self.MPI_LIB_CTYPES.horovod_init_comm(comm_obj)
+            self.MPI_LIB_CTYPES.horovod_init_comm(comm_obj)
         else:
             comm_size = len(comm)
-            return self.MPI_LIB_CTYPES.horovod_init(
+            self.MPI_LIB_CTYPES.horovod_init(
                 (ctypes.c_int * comm_size)(*comm), ctypes.c_int(comm_size))
 
     def shutdown(self):
