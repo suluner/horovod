@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+
+ROOT_DIR=$(cd "$(dirname `realpath $0`)"; pwd)
+
+export HOROVOD_LOG_LEVEL=TRACE
+
+python $ROOT_DIR/test_join_op.py
