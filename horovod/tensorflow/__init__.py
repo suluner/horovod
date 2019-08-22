@@ -62,7 +62,7 @@ def allreduce(tensor, average=True, device_dense='', device_sparse='',
     if isinstance(tensor, tf.IndexedSlices):
         with tf.device(device_sparse):
             # For IndexedSlices, do two allgathers instead of an allreduce.
-            horovod_size = tf.cast(size()-joined_size(), tensor.values.dtype)
+            horovod_size = tf.cast(size(), tensor.values.dtype)
             values = allgather(tensor.values)
             indices = allgather(tensor.indices)
 
