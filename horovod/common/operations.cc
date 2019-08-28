@@ -260,6 +260,7 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
   bool error = false;
   int joined_size = join_device_map.size();
   std::vector<int64_t> response_tensor_shape;
+  int broadcast_root_rank = 0;
   auto it = message_table->find(name);
   assert(it != message_table->end());
 
@@ -426,6 +427,9 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
         break;
       }
     }
+    if (joined_size > 0) {
+      broadcast_root_rank = first_root_rank;
+    }
   }
 
   bool first_device_is_cpu = requests[0].device() == CPU_DEVICE_ID;
@@ -485,6 +489,14 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
     }
   } else if (message_type == Request::BROADCAST) {
     response.set_response_type(Response::BROADCAST);
+    if (joined_size > 0) {
+      for (auto dim : response_tensor_shape) {
+        response.add_tensor_shape(dim);
+      }
+      response.set_tensor_type(data_type);
+      response.set_root_rank(broadcast_root_rank);
+      response.set_any_joined(true);
+    }
   } else if (message_type == Request::JOIN) {
     response.set_response_type(Response::JOIN);
   }
@@ -766,6 +778,19 @@ void PerformOperation(TensorTable& tensor_table, Response response) {
           LOG(TRACE) << "Construct Allgather dummy output done.";
           entry.tensor = dummy_tensor;
           entry.output = dummy_output;
+          entry.device = device;
+        } else if (response.response_type() == Response::BROADCAST) {
+          std::shared_ptr<Tensor> dummy_tensor = ConstructDummyTensor(response.tensor_type(),
+                                                                      response.tensor_shape(),
+                                                                      device);
+          LOG(TRACE) << "Construct Broadcast dummy tensor done.";
+          std::shared_ptr<Tensor> dummy_output = ConstructDummyTensor(response.tensor_type(),
+                                                                      response.tensor_shape(),
+                                                                      device);
+          LOG(TRACE) << "Construct Broadcast dummy output done.";
+          entry.tensor = dummy_tensor;
+          entry.output = dummy_output;
+          entry.root_rank = response.root_rank();
           entry.device = device;
         }
         entry.callback = [](const common::Status& status) {return;};

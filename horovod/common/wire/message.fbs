@@ -97,6 +97,7 @@ table Response {
     // indexed by the rank.
     tensor_sizes:[long];
     tensor_shape:[long];
+    root_rank:int;
     any_joined:bool;
 }
 table ResponseList {

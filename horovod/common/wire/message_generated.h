@@ -359,7 +359,8 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_DEVICES = 12,
     VT_TENSOR_SIZES = 14,
     VT_TENSOR_SHAPE = 16,
-    VT_ANY_JOINED = 18
+    VT_ROOT_RANK = 18,
+    VT_ANY_JOINED = 20
   };
   ResponseType response_type() const {
     return static_cast<ResponseType>(GetField<int8_t>(VT_RESPONSE_TYPE, 0));
@@ -382,6 +383,9 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int64_t> *tensor_shape() const {
     return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_TENSOR_SHAPE);
   }
+  int32_t root_rank() const {
+    return GetField<int32_t>(VT_ROOT_RANK, 0);
+  }
   bool any_joined() const {
     return GetField<uint8_t>(VT_ANY_JOINED, 0) != 0;
   }
@@ -400,6 +404,7 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVector(tensor_sizes()) &&
            VerifyOffset(verifier, VT_TENSOR_SHAPE) &&
            verifier.VerifyVector(tensor_shape()) &&
+           VerifyField<int32_t>(verifier, VT_ROOT_RANK) &&
            VerifyField<uint8_t>(verifier, VT_ANY_JOINED) &&
            verifier.EndTable();
   }
@@ -429,6 +434,9 @@ struct ResponseBuilder {
   void add_tensor_shape(flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_shape) {
     fbb_.AddOffset(Response::VT_TENSOR_SHAPE, tensor_shape);
   }
+  void add_root_rank(int32_t root_rank) {
+    fbb_.AddElement<int32_t>(Response::VT_ROOT_RANK, root_rank, 0);
+  }
   void add_any_joined(bool any_joined) {
     fbb_.AddElement<uint8_t>(Response::VT_ANY_JOINED, static_cast<uint8_t>(any_joined), 0);
   }
@@ -453,8 +461,10 @@ inline flatbuffers::Offset<Response> CreateResponse(
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> devices = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_shape = 0,
+    int32_t root_rank = 0,
     bool any_joined = false) {
   ResponseBuilder builder_(_fbb);
+  builder_.add_root_rank(root_rank);
   builder_.add_tensor_shape(tensor_shape);
   builder_.add_tensor_sizes(tensor_sizes);
   builder_.add_devices(devices);
@@ -475,6 +485,7 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
     const std::vector<int32_t> *devices = nullptr,
     const std::vector<int64_t> *tensor_sizes = nullptr,
     const std::vector<int64_t> *tensor_shape = nullptr,
+    int32_t root_rank = 0,
     bool any_joined = false) {
   auto tensor_names__ = tensor_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*tensor_names) : 0;
   auto error_message__ = error_message ? _fbb.CreateString(error_message) : 0;
@@ -490,6 +501,7 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
       devices__,
       tensor_sizes__,
       tensor_shape__,
+      root_rank,
       any_joined);
 }
 

@@ -178,6 +178,10 @@ public:
   
   void add_tensor_shape(int64_t value);
 
+  void set_root_rank(int32_t value);
+
+  int32_t root_rank() const;
+
   void set_any_joined(bool value);
 
   bool any_joined() const;
@@ -198,6 +202,7 @@ private:
   std::vector<int32_t> devices_;
   std::vector<int64_t> tensor_sizes_;
   std::vector<int64_t> tensor_shape_;
+  int32_t root_rank_ = 0;
   bool any_joined_ = false;
 };
 

@@ -9,4 +9,5 @@ export https_proxy=http://dl-proxy.service.163.org:8123
 
 #python $ROOT_DIR/tensorflow_boston.py
 #python $ROOT_DIR/pytorch_mnist.py
-python $ROOT_DIR/mxnet_mnist.py
+#python $ROOT_DIR/mxnet_mnist.py
+python $ROOT_DIR/tensorflow_broadcast.py

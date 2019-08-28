@@ -329,6 +329,14 @@ void Response::add_tensor_shape(int64_t value) {
   tensor_shape_.push_back(value);
 }
 
+void Response::set_root_rank(int32_t value) {
+  root_rank_ = value;
+}
+
+int32_t Response::root_rank() const {
+  return root_rank_;
+}
+
 void Response::set_any_joined(bool value) {
   any_joined_ = value;
 }
@@ -361,6 +369,7 @@ void Response_ParseFromWire(Response& response,
                                                  obj->tensor_sizes()->end()));
   response.set_tensor_shape(std::vector<int64_t>(obj->tensor_shape()->begin(),
                                                  obj->tensor_shape()->end()));
+  response.set_root_rank((int32_t)obj->root_rank());
   response.set_any_joined((bool)obj->any_joined());
 }
 
@@ -389,6 +398,7 @@ void Response_SerializeToWire(const Response& response,
   response_builder.add_devices(devices_wire);
   response_builder.add_tensor_sizes(tensor_sizes_wire);
   response_builder.add_tensor_shape(tensor_shape_wire);
+  response_builder.add_root_rank((int32_t)response.root_rank());
   response_builder.add_any_joined((bool)response.any_joined());
   obj = response_builder.Finish();
 }
