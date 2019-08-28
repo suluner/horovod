@@ -309,12 +309,24 @@ const std::vector<int64_t>& Response::tensor_sizes() const {
   return tensor_sizes_;
 }
 
+const std::vector<int64_t>& Response::tensor_shape() const {
+  return tensor_shape_;
+}
+
 void Response::set_tensor_sizes(const std::vector<int64_t>& value) {
   tensor_sizes_ = value;
 }
 
+void Response::set_tensor_shape(const std::vector<int64_t>& value) {
+  tensor_shape_ = value;
+}
+
 void Response::add_tensor_size(int64_t value) {
   tensor_sizes_.push_back(value);
+}
+
+void Response::add_tensor_shape(int64_t value) {
+  tensor_shape_.push_back(value);
 }
 
 void Response::set_any_joined(bool value) {
@@ -347,6 +359,8 @@ void Response_ParseFromWire(Response& response,
       std::vector<int32_t>(obj->devices()->begin(), obj->devices()->end()));
   response.set_tensor_sizes(std::vector<int64_t>(obj->tensor_sizes()->begin(),
                                                  obj->tensor_sizes()->end()));
+  response.set_tensor_shape(std::vector<int64_t>(obj->tensor_shape()->begin(),
+                                                 obj->tensor_shape()->end()));
   response.set_any_joined((bool)obj->any_joined());
 }
 
@@ -364,6 +378,7 @@ void Response_SerializeToWire(const Response& response,
   auto error_message_wire = builder.CreateString(response.error_message());
   auto devices_wire = builder.CreateVector(response.devices());
   auto tensor_sizes_wire = builder.CreateVector(response.tensor_sizes());
+  auto tensor_shape_wire = builder.CreateVector(response.tensor_shape());
 
   wire::ResponseBuilder response_builder(builder);
   response_builder.add_response_type(
@@ -373,6 +388,7 @@ void Response_SerializeToWire(const Response& response,
   response_builder.add_error_message(error_message_wire);
   response_builder.add_devices(devices_wire);
   response_builder.add_tensor_sizes(tensor_sizes_wire);
+  response_builder.add_tensor_shape(tensor_shape_wire);
   response_builder.add_any_joined((bool)response.any_joined());
   obj = response_builder.Finish();
 }

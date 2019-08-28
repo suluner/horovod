@@ -1,4 +1,5 @@
-// Copyright 2019 Uber Technologies, Inc. All Rights Reserved.
+// Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+// Modifications copyright (C) 2017 Uber Technologies, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -357,7 +358,8 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_ERROR_MESSAGE = 10,
     VT_DEVICES = 12,
     VT_TENSOR_SIZES = 14,
-    VT_ANY_JOINED = 16
+    VT_TENSOR_SHAPE = 16,
+    VT_ANY_JOINED = 18
   };
   ResponseType response_type() const {
     return static_cast<ResponseType>(GetField<int8_t>(VT_RESPONSE_TYPE, 0));
@@ -377,6 +379,9 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const flatbuffers::Vector<int64_t> *tensor_sizes() const {
     return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_TENSOR_SIZES);
   }
+  const flatbuffers::Vector<int64_t> *tensor_shape() const {
+    return GetPointer<const flatbuffers::Vector<int64_t> *>(VT_TENSOR_SHAPE);
+  }
   bool any_joined() const {
     return GetField<uint8_t>(VT_ANY_JOINED, 0) != 0;
   }
@@ -393,6 +398,8 @@ struct Response FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            verifier.VerifyVector(devices()) &&
            VerifyOffset(verifier, VT_TENSOR_SIZES) &&
            verifier.VerifyVector(tensor_sizes()) &&
+           VerifyOffset(verifier, VT_TENSOR_SHAPE) &&
+           verifier.VerifyVector(tensor_shape()) &&
            VerifyField<uint8_t>(verifier, VT_ANY_JOINED) &&
            verifier.EndTable();
   }
@@ -419,6 +426,9 @@ struct ResponseBuilder {
   void add_tensor_sizes(flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes) {
     fbb_.AddOffset(Response::VT_TENSOR_SIZES, tensor_sizes);
   }
+  void add_tensor_shape(flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_shape) {
+    fbb_.AddOffset(Response::VT_TENSOR_SHAPE, tensor_shape);
+  }
   void add_any_joined(bool any_joined) {
     fbb_.AddElement<uint8_t>(Response::VT_ANY_JOINED, static_cast<uint8_t>(any_joined), 0);
   }
@@ -442,8 +452,10 @@ inline flatbuffers::Offset<Response> CreateResponse(
     flatbuffers::Offset<flatbuffers::String> error_message = 0,
     flatbuffers::Offset<flatbuffers::Vector<int32_t>> devices = 0,
     flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_sizes = 0,
+    flatbuffers::Offset<flatbuffers::Vector<int64_t>> tensor_shape = 0,
     bool any_joined = false) {
   ResponseBuilder builder_(_fbb);
+  builder_.add_tensor_shape(tensor_shape);
   builder_.add_tensor_sizes(tensor_sizes);
   builder_.add_devices(devices);
   builder_.add_error_message(error_message);
@@ -462,11 +474,13 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
     const char *error_message = nullptr,
     const std::vector<int32_t> *devices = nullptr,
     const std::vector<int64_t> *tensor_sizes = nullptr,
+    const std::vector<int64_t> *tensor_shape = nullptr,
     bool any_joined = false) {
   auto tensor_names__ = tensor_names ? _fbb.CreateVector<flatbuffers::Offset<flatbuffers::String>>(*tensor_names) : 0;
   auto error_message__ = error_message ? _fbb.CreateString(error_message) : 0;
   auto devices__ = devices ? _fbb.CreateVector<int32_t>(*devices) : 0;
   auto tensor_sizes__ = tensor_sizes ? _fbb.CreateVector<int64_t>(*tensor_sizes) : 0;
+  auto tensor_shape__ = tensor_shape ? _fbb.CreateVector<int64_t>(*tensor_shape) : 0;
   return horovod::common::wire::CreateResponse(
       _fbb,
       response_type,
@@ -475,6 +489,7 @@ inline flatbuffers::Offset<Response> CreateResponseDirect(
       error_message__,
       devices__,
       tensor_sizes__,
+      tensor_shape__,
       any_joined);
 }
 

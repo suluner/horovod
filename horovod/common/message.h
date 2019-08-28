@@ -167,10 +167,16 @@ public:
   // These tensor sizes are the dimension zero sizes of all the input matrices,
   // indexed by the rank.
   const std::vector<int64_t>& tensor_sizes() const;
+  
+  const std::vector<int64_t>& tensor_shape() const;
 
   void set_tensor_sizes(const std::vector<int64_t>& value);
+  
+  void set_tensor_shape(const std::vector<int64_t>& value);
 
   void add_tensor_size(int64_t value);
+  
+  void add_tensor_shape(int64_t value);
 
   void set_any_joined(bool value);
 
@@ -191,6 +197,7 @@ private:
   std::string error_message_;
   std::vector<int32_t> devices_;
   std::vector<int64_t> tensor_sizes_;
+  std::vector<int64_t> tensor_shape_;
   bool any_joined_ = false;
 };
 

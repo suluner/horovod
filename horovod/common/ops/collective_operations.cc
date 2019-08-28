@@ -116,9 +116,11 @@ Status AllgatherOp::AllocateOutput(std::vector<TensorTableEntry>& entries,
     output_shape.AddDim((int64_t)total_entry_dimension_size);
     output_shape.AppendShape(single_slice_shape);
 
-    Status status = e.context->AllocateOutput(output_shape, &e.output);
-    if (!status.ok()) {
-      return status;
+    if (global_state_->joined == false) {
+      Status status = e.context->AllocateOutput(output_shape, &e.output);
+      if (!status.ok()) {
+        return status;
+      }
     }
   }
 

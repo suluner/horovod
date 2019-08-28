@@ -159,7 +159,7 @@ public:
 template <DataType DT, class T>
 class DummyTensor : public Tensor {
 public:
-  DummyTensor(int device, int64_t num_elements);
+  DummyTensor(int device, const std::vector<int64_t>& tensor_shape);
   ~DummyTensor();
   virtual const DataType dtype() const override;
   virtual const TensorShape shape() const override;
@@ -168,12 +168,18 @@ public:
 
 private:
   int64_t num_elements_;
+  std::vector<int64_t> tensor_shape_;
   int device_;
   T* buffer_data_;
 };
 
 template <DataType DT, class T>
-DummyTensor<DT, T>::DummyTensor(int device, int64_t num_elements) {
+DummyTensor<DT, T>::DummyTensor(int device, const std::vector<int64_t>& tensor_shape) {
+  tensor_shape_ = tensor_shape;
+  int64_t num_elements = 1;
+  for (auto dim : tensor_shape_) {
+    num_elements *= dim;
+  }
   num_elements_ = num_elements;
   device_ = device;
   if (device_ == CPU_DEVICE_ID) {
@@ -213,7 +219,9 @@ const DataType DummyTensor<DT, T>::dtype() const {
 template <DataType DT, class T>
 const TensorShape DummyTensor<DT, T>::shape() const {
   TensorShape shape;
-  shape.AddDim(num_elements_);
+  for (auto dim : tensor_shape_) {
+    shape.AddDim(dim);
+  }
   return shape;
 }
 

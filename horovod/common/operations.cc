@@ -258,6 +258,8 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
                            std::string name,
                            std::unordered_map<int32_t, int32_t>& join_device_map) {
   bool error = false;
+  int joined_size = join_device_map.size();
+  std::vector<int64_t> response_tensor_shape;
   auto it = message_table->find(name);
   assert(it != message_table->end());
 
@@ -327,12 +329,17 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
         break;
       }
     }
+    if (joined_size > 0) {
+      for (int i=0; i<tensor_shape.dims(); ++i) {
+        response_tensor_shape.push_back(tensor_shape.dim_size(i));
+      }
+    }
   }
 
   // If we are doing an allgather, make sure all but the first dimension are
   // the same. The first dimension may be different and the output tensor is
   // the sum of the first dimension. Collect the sizes by rank.
-  std::vector<int64_t> tensor_sizes(requests.size());
+  std::vector<int64_t> tensor_sizes(requests.size() + joined_size);
   if (message_type == Request::ALLGATHER) {
     TensorShape tensor_shape;
     for (auto dim : requests[0].tensor_shape()) {
@@ -388,6 +395,16 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
 
       tensor_sizes[requests[i].request_rank()] = request_shape.dim_size(0);
     }
+    // add joined rank first dim size
+    if (joined_size > 0) {
+      for (auto iter=join_device_map.begin(); iter!= join_device_map.end(); ++iter) {
+        tensor_sizes[iter->first] = 1;
+      }
+      response_tensor_shape.push_back(1);
+      for (int i=1; i<tensor_shape.dims(); ++i) {
+        response_tensor_shape.push_back(tensor_shape.dim_size(i));
+      }
+    }
   }
 
   // If we are doing a broadcast, check that all root ranks are identical.
@@ -429,9 +446,7 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
       break;
     }
   }
-  int joined_size = join_device_map.size();
-  int mpi_size = requests.size() + joined_size;
-  std::vector<int32_t> devices(mpi_size);
+  std::vector<int32_t> devices(requests.size() + joined_size);
   for (auto& request : requests) {
     devices[request.request_rank()] = request.device();
   }
@@ -452,18 +467,20 @@ Response ConstructResponse(std::unique_ptr<MessageTable>& message_table,
     for (auto dim : tensor_sizes) {
       response.add_tensor_size(dim);
     }
+    if (joined_size>0) {
+      for (auto dim : response_tensor_shape) {
+        response.add_tensor_shape(dim);
+      }
+      response.set_tensor_type(data_type);
+      response.set_any_joined(true);
+    }
   } else if (message_type == Request::ALLREDUCE) {
     response.set_response_type(Response::ALLREDUCE);
     if (joined_size > 0) {
-      TensorShape tensor_shape;
-      for (auto dim : requests[0].tensor_shape()) {
-        tensor_shape.AddDim(dim);
+      for (auto dim : response_tensor_shape) {
+        response.add_tensor_shape(dim);
       }
-      int tensor_size = tensor_shape.num_elements();
-      response.add_tensor_size(tensor_size);
-
       response.set_tensor_type(data_type);
-
       response.set_any_joined(true);
     }
   } else if (message_type == Request::BROADCAST) {
@@ -675,7 +692,7 @@ int64_t GetTensorDataForAutotuner(const ResponseList& response_list,
 }
 
 // Declare ConstructDummyTensor function
-std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, int64_t tensor_size, int device);
+std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, const std::vector<int64_t>& tensor_shape, int device);
 
 // Process a Response by doing a reduction, a gather, a broadcast, or
 // raising an error.
@@ -713,21 +730,46 @@ void PerformOperation(TensorTable& tensor_table, Response response) {
         auto iter = tensor_table.find(name);
         assert(iter != tensor_table.end());
         entries.push_back(iter->second);
+
         // Clear the tensor table of this tensor and its callbacks; the rest of
         // this function takes care of it.
         tensor_table.erase(iter);
       } else {
         TensorTableEntry entry;
         entry.tensor_name = name;
-        std::shared_ptr<Tensor> dummy_tensor = ConstructDummyTensor(response.tensor_type(),
-                                                                    response.tensor_sizes()[0],
-                                                                    device);
-        entry.tensor = dummy_tensor;
-        entry.output = dummy_tensor;
-        entry.device = device;
+        if (response.response_type() == Response::ALLREDUCE) {
+          std::shared_ptr<Tensor> dummy_tensor = ConstructDummyTensor(response.tensor_type(),
+                                                                      response.tensor_shape(),
+                                                                      device);
+          LOG(TRACE) << "Construct Allreduce dummy tensor done.";
+          entry.tensor = dummy_tensor;
+          entry.output = dummy_tensor;
+          entry.device = device;
+        } else if (response.response_type() == Response::ALLGATHER) {
+          std::shared_ptr<Tensor> dummy_tensor = ConstructDummyTensor(response.tensor_type(),
+                                                                      response.tensor_shape(),
+                                                                      device);
+          LOG(TRACE) << "Construct Allgather dummy tensor done.";
+          int64_t total_dim_size = 0;
+          for (auto dim : response.tensor_sizes()) {
+            total_dim_size += dim;
+          }
+          std::vector<int64_t> output_shape;
+          output_shape.push_back((int64_t)total_dim_size);
+          for (int i=1; i<response.tensor_shape().size(); ++i) {
+            output_shape.push_back((int64_t)response.tensor_shape()[i]);
+          }
+
+          std::shared_ptr<Tensor> dummy_output = ConstructDummyTensor(response.tensor_type(),
+                                                                      output_shape,
+                                                                      device);
+          LOG(TRACE) << "Construct Allgather dummy output done.";
+          entry.tensor = dummy_tensor;
+          entry.output = dummy_output;
+          entry.device = device;
+        }
         entry.callback = [](const common::Status& status) {return;};
         entries.push_back(std::move(entry));
-        LOG(TRACE) << "Construct dummy tensor done.";
       }
     }
   }
@@ -1421,41 +1463,41 @@ void RunBypass(std::queue<Request>& message_queue,
   }
 }
 
-std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, int64_t tensor_size, int device) {
+std::shared_ptr<Tensor> ConstructDummyTensor(DataType tensor_type, const std::vector<int64_t>& tensor_shape, int device) {
   std::shared_ptr<Tensor> tensor_ptr = nullptr;
   switch (tensor_type) {
     case DataType::HOROVOD_UINT8:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_UINT8, uint8_t>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_UINT8, uint8_t>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_INT8:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT8, int8_t>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT8, int8_t>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_UINT16:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_UINT16, uint16_t>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_UINT16, uint16_t>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_INT16:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT16, int16_t>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT16, int16_t>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_INT32:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT32, int32_t>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT32, int32_t>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_INT64:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT64, int64_t>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_INT64, int64_t>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_FLOAT16:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT16, float>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT16, float>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_FLOAT32:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT32, float>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT32, float>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_FLOAT64:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT64, double>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_FLOAT64, double>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_BOOL:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_BOOL, bool>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_BOOL, bool>>(device, tensor_shape);
       break;
     case DataType::HOROVOD_BYTE:
-      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_BYTE, char>>(device, tensor_size);
+      tensor_ptr = std::make_shared<DummyTensor<DataType::HOROVOD_BYTE, char>>(device, tensor_shape);
       break;
     default:
       throw std::logic_error("Unsupported tensor data type.");
